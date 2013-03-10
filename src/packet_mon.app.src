@@ -1,0 +1,15 @@
+{application, packet_mon,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  ssl,
+                  lager,
+                  estatsd
+                 ]},
+  {mod, { packet_mon, []}},
+  {env, []}
+ ]}.
