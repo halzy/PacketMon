@@ -72,7 +72,7 @@ config(Name, Default) ->
 %% @end
 %%--------------------------------------------------------------------
 init([WS]) ->
-    io:format("Settings: ~p~n", [WS]),
+    lager:info("Settings: ~p~n", [WS]),
     {Host, Port, Path, SSL} = WS,
     State = connect(#state{host=Host, port=Port, path=Path, ssl=SSL}),
     {ok, State}.
@@ -118,15 +118,23 @@ handle_cast(_Msg, State) ->
 %%                                   {stop, Reason, State}
 %% @end
 %%--------------------------------------------------------------------
+
+socket_address(Address) ->
+    {ok, RE} = re:compile("[.]"),
+    Opts = [global, {return, list}],
+    Name = inet_parse:ntoa(Address),
+    re:replace(Name,  RE, "_", Opts).
+
+
 handle_info({tcp, Socket, Data}, State) ->
     {ok, {Address, _Port}} = inet:peername(Socket),
-    Name = inet_parse:ntoa(Address),
-    estatsd:increment("stats." ++ Name ++ ".dps", size(Data)),
+    Name = socket_address(Address),
+    estatsd:increment("dps_ws." ++ Name, size(Data)),
     {noreply, State};
 handle_info({ssl, Socket, Data}, State) ->
     {ok, {Address, _Port}} = ssl:peername(Socket),
-    Name = inet_parse:ntoa(Address),
-    estatsd:increment("stats." ++ Name ++ ".dps", size(Data)),
+    Name = socket_address(Address),
+    estatsd:increment("dps_ws." ++ Name, size(Data)),
     {noreply, State};
 handle_info({ssl_closed, Socket}, State) ->
     io:format("SSL Socket Closed: ~p~n", [Socket]),
@@ -179,7 +187,7 @@ connect(State=#state{host=Host, port=Port, path=Path, ssl=SSL}) ->
     {ok, IpList} = inet:getaddrs(State#state.host, inet),
     io:format("Connecting to: ~p~n", [IpList]),
     Hello = make_hello(Host, Port, Path),
-    [ make_client(Ip, Port, Hello, SSL) || Ip <- [IpList] ],
+    [ make_client(Ip, Port, Hello, SSL) || Ip <- IpList ],
     State.
 
 make_hello(Host, Port, Path) ->
@@ -201,14 +209,14 @@ make_client_socket(Ip, Port, Hello, Owner, SSL) ->
                 {ok, SSLSock} -> 
                     ok = ssl:send(SSLSock, Hello),
                     ok = ssl:controlling_process(SSLSock, Owner);
-                _ -> ok
+                SSLError -> lager:error("SSL Error: ~p~n", [SSLError])
             end;
         _ ->
             case gen_tcp:connect(Ip, Port, [binary, {packet, 0}]) of
                 {ok, TCPSock} -> 
                     ok = gen_tcp:send(TCPSock, Hello),
                     ok = gen_tcp:controlling_process(TCPSock, Owner);
-                _ -> ok
+                TCPError -> lager:error("TCP Error: ~p~n", [TCPError])
             end
     end.
 
